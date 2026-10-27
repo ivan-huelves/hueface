@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hueface</title>
+<meta name="description" content="Add color axes to your color variable font. Runs in your browser.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<style>
+:root {
+  --bg: #fbfaf8; --surface: #ffffff; --surface-2: #f3f1ed; --text: #1d1c1a; --text-2: #5f5d58;
+  --text-3: #8f8c85; --border: #e4e1db; --border-2: #cfcbc3; --accent: #1d1c1a; --on-accent: #ffffff;
+  --warn-bg: #fff4d6; --warn-text: #6b4b00; --info-bg: #eef3ff; --info-text: #23407a;
+  --err-bg: #fde8e8; --err-text: #8a1c1c; --focus: #0062ff; --radius: 8px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161615; --surface: #1f1e1c; --surface-2: #2a2926; --text: #f1efea; --text-2: #b7b4ad;
+    --text-3: #8a877f; --border: #34322e; --border-2: #4a4843; --accent: #f1efea; --on-accent: #161615;
+    --warn-bg: #3a2f12; --warn-text: #f3d68a; --info-bg: #1c2740; --info-text: #b9cdf7;
+    --err-bg: #3d1a1a; --err-text: #f6b7b7; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161615; --surface: #1f1e1c; --surface-2: #2a2926; --text: #f1efea; --text-2: #b7b4ad;
+  --text-3: #8a877f; --border: #34322e; --border-2: #4a4843; --accent: #f1efea; --on-accent: #161615;
+  --warn-bg: #3a2f12; --warn-text: #f3d68a; --info-bg: #1c2740; --info-text: #b9cdf7;
+  --err-bg: #3d1a1a; --err-text: #f6b7b7; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.wrap { max-width: 920px; margin: 0 auto; padding: 28px 16px 64px; }
+a { color: inherit; }
+h1 { font-size: 26px; margin: 0; letter-spacing: -0.01em; font-weight: 650; }
+.muted { color: var(--text-2); }
+.small { font-size: 13px; }
+.tiny { font-size: 12px; color: var(--text-3); }
+/* the icon bottom sits on the tagline baseline (an image's baseline is its bottom edge) */
+header .brand { display: flex; align-items: last baseline; gap: 14px; }
+header .brand img { width: 42px; height: 42px; display: block; }
+header h1 { line-height: 1.15; }
+header .brand .tiny { line-height: 1.3; margin-top: 2px; }
+header p { margin: 12px 0 0; max-width: 680px; color: var(--text-2); }
+details.guide { margin-top: 14px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); padding: 10px 14px; }
+details.guide summary { cursor: pointer; font-weight: 550; }
+details.guide h3 { font-size: 14px; margin: 14px 0 4px; }
+details.guide ol, details.guide ul { margin: 4px 0; padding-left: 20px; color: var(--text-2); font-size: 14px; }
+button, .btn { font: inherit; font-size: 14px; border: 1px solid var(--border-2); background: var(--surface);
+  color: var(--text); border-radius: var(--radius); padding: 7px 12px; cursor: pointer; display: inline-flex;
+  align-items: center; gap: 6px; }
+button:hover, .btn:hover { background: var(--surface-2); }
+button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+button.primary:hover { opacity: .88; background: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, .drop:focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 2px; }
+input[type=text], select { font: inherit; font-size: 14px; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border-2); border-radius: var(--radius); padding: 6px 10px; min-width: 0; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.status { margin: 22px 0 0; font-size: 13px; color: var(--text-2); display: flex; gap: 8px; align-items: center; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #e0a100; flex: none; }
+.dot.ok { background: #1f9d55; } .dot.err { background: #d43c3c; }
+.drop { margin-top: 18px; border: 1.5px dashed var(--border-2); border-radius: 14px; background: var(--surface);
+  padding: 44px 16px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+.drop.over { border-color: var(--focus); background: var(--info-bg); }
+.drop strong { display: block; font-size: 17px; margin-bottom: 4px; }
+.filebar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 22px;
+  padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.filebar .name { font-weight: 600; word-break: break-all; }
+.grow { flex: 1; min-width: 200px; }
+.notes { margin-top: 12px; display: grid; gap: 6px; }
+.note { font-size: 13px; padding: 8px 12px; border-radius: var(--radius); }
+.note.info { background: var(--info-bg); color: var(--info-text); }
+.note.warn { background: var(--warn-bg); color: var(--warn-text); }
+.note.err { background: var(--err-bg); color: var(--err-text); }
+.preview { margin-top: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  overflow: hidden; }
+.stage { padding: 28px 22px; min-height: 200px; display: flex; align-items: center; transition: background .2s;
+  position: relative; }
+.stage.light { background: #ffffff; color: #111; } .stage.dark { background: #111111; color: #fff; }
+.stage.grey { background: #8d8a84; color: #111; }
+.sample { width: 100%; outline: none; line-height: 1.15; word-break: break-word; font-size: 120px;
+  white-space: pre-wrap; }
+.busy { position: absolute; top: 10px; right: 12px; font-size: 12px; color: #8f8c85; opacity: 0; transition: opacity .2s; }
+.busy.on { opacity: 1; }
+.controls { padding: 14px 22px 18px; border-top: 1px solid var(--border); display: grid; gap: 10px; }
+.slider { display: grid; grid-template-columns: 150px minmax(0, 1fr) 48px; gap: 12px; align-items: center;
+  font-size: 14px; }
+.slider .lbl { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slider output { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.badge { font-size: 11px; padding: 1px 6px; border-radius: 6px; background: var(--info-bg); color: var(--info-text);
+  margin-left: 6px; vertical-align: 1px; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-top: 4px; }
+.seg { display: inline-flex; border: 1px solid var(--border-2); border-radius: var(--radius); overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 5px 10px; font-size: 13px; }
+.seg button[aria-pressed=true] { background: var(--surface-2); font-weight: 600; }
+h2 { font-size: 15px; font-weight: 600; margin: 30px 0 4px; }
+.rows { border-top: 1px solid var(--border); }
+.row { border-bottom: 1px solid var(--border); padding: 14px 0; }
+.row-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row-head input[type=text] { width: 150px; }
+.strip { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.sw { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--border-2); padding: 0; cursor: pointer; flex: none; }
+.sw[aria-expanded=true] { outline: 2px solid var(--focus); outline-offset: 2px; }
+.arrow { color: var(--text-3); font-size: 14px; }
+.editor { margin-top: 10px; padding: 10px 12px; background: var(--surface-2); border-radius: var(--radius);
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.editor input[type=color] { width: 44px; height: 32px; border: 0; padding: 0; background: none; cursor: pointer; }
+.editor input[type=text] { width: 96px; font-family: ui-monospace, Menlo, monospace; }
+.hint { font-size: 12px; color: var(--text-3); margin-top: 6px; }
+.export { margin-top: 30px; padding: 16px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.export input[type=text] { flex: 1; min-width: 180px; }
+footer { margin-top: 48px; font-size: 12px; color: var(--text-3); }
+[hidden] { display: none !important; }
+@media (max-width: 600px) {
+  .slider { grid-template-columns: 96px minmax(0, 1fr) 40px; }
+  .sample { font-size: 72px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="brand"><img src="favicon.svg" alt=""><div><h1>Hueface</h1><div class="tiny">Color axes for variable fonts</div></div></div>
+  <p>Load a color font, choose how each of its colors changes, and export a font with new color axes. The color variation lives in the font file itself, so it works in Illustrator, InDesign and browsers without any code. Everything runs in your browser: your font is never uploaded.</p>
+  <details class="guide">
+    <summary>How to prepare your font</summary>
+    <h3>In any font editor</h3>
+    <ul>
+      <li>Draw each part you want to color as its own element, with a solid fill.</li>
+      <li>Use one exact color per role. Hueface groups parts by color, so if two parts must change independently, give them slightly different colors (for example #E6007E and #E6007F).</li>
+      <li>Avoid components that are rotated or scaled differently in each master. Decompose them before exporting.</li>
+      <li>Export a variable TrueType font with COLR color (not SVG). Static color fonts also work.</li>
+    </ul>
+    <h3>FontLab</h3>
+    <ol>
+      <li>Select each element and give it a solid Fill in the Color panel.</li>
+      <li>Repeat the same elements and colors in every master.</li>
+      <li>File › Export Font As… › Variable TT › Customize, and turn on "OT+COLR".</li>
+    </ol>
+    <h3>Glyphs</h3>
+    <ol>
+      <li>Add a Color Palettes parameter in Font Info › Masters.</li>
+      <li>Add a Color layer for each palette color to every master of each glyph.</li>
+      <li>Export as a variable font.</li>
+    </ol>
+    <h3>Previewing</h3>
+    <ul><li>Use Chrome, Edge or Firefox. Safari can't display this kind of color font yet. The exported font works in Illustrator either way.</li></ul>
+  </details>
+</header>
+
+<div class="status" id="status" role="status"><span class="dot" id="statusDot"></span><span id="statusText">Loading the font engine… the first visit takes a few seconds.</span></div>
+<div class="note warn" id="safariNote" hidden style="margin-top:10px">Safari can't display color variable fonts yet, so the preview will look wrong here. Open Hueface in Chrome, Edge or Firefox. Exported fonts are not affected.</div>
+
+<div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose a font file">
+  <strong>Drop a color font here</strong>
+  <span class="muted small">or click to choose a .ttf or .otf file</span>
+  <input type="file" id="file" accept=".ttf,.otf,font/ttf,font/otf" hidden>
+</div>
+<div class="tiny" style="margin-top:8px;text-align:center">No color font at hand? <button id="sampleBtn" style="font-size:12px;padding:3px 8px">Try a sample font</button></div>
+<div class="notes" id="loadError"></div>
+
+<main id="workspace" hidden>
+  <div class="filebar">
+    <div class="grow"><div class="name" id="fileName"></div><div class="tiny" id="fileSummary"></div></div>
+    <button id="loadSettings" title="Apply colors and axes saved from a previous session">Load settings</button>
+    <button id="saveSettings" title="Save these colors and axes to reuse after re-exporting your font">Save settings</button>
+    <input type="file" id="settingsFile" accept=".json,application/json" hidden>
+  </div>
+  <div class="notes" id="notes"></div>
+
+  <section class="preview" aria-label="Preview">
+    <div class="stage light" id="stage">
+      <div class="sample" id="sample" contenteditable="true" spellcheck="false" aria-label="Preview text, editable"></div>
+      <span class="busy" id="busy">Updating…</span>
+    </div>
+    <div class="controls">
+      <div id="sliders" style="display:grid;gap:10px"></div>
+      <div class="toolbar">
+        <span class="tiny">Size</span>
+        <input type="range" id="size" min="24" max="320" value="120" style="width:140px" aria-label="Preview size">
+        <span style="flex:1"></span>
+        <div class="seg" role="group" aria-label="Background">
+          <button data-bg="light" aria-pressed="true">White</button><button data-bg="grey" aria-pressed="false">Grey</button><button data-bg="dark" aria-pressed="false">Black</button>
+        </div>
+        <button id="resetAxes">Reset axes</button>
+      </div>
+    </div>
+  </section>
+
+  <h2>Colors in your font</h2>
+  <div class="tiny">Each color can stay fixed or get its own axis. The row name becomes the axis name in your design app.</div>
+  <div class="rows" id="rows" style="margin-top:10px"></div>
+
+  <div class="export">
+    <label for="family" class="small muted">Font name</label>
+    <input type="text" id="family" autocomplete="off">
+    <button class="primary" id="exportBtn">Export font</button>
+  </div>
+  <div class="notes" id="exportNotes"></div>
+</main>
+
+<footer>Hueface by <a href="https://ivan-huelves.github.io/">Iván Huelves Illas</a> · <a href="https://github.com/ivan-huelves/hueface">Source code</a> · Licensed CC BY-NC-SA 4.0. Fonts you make with Hueface are yours.</footer>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const MAX_STOPS = 8;
+
+/* ---------------- worker ---------------- */
+const worker = new Worker("worker.js");
+let msgId = 0;
+const pending = new Map();
+worker.onmessage = (e) => { const p = pending.get(e.data.id); if (p) { pending.delete(e.data.id); p(e.data); } };
+worker.onerror = () => setStatus("err", "The font engine couldn't start. Check your connection and reload the page.");
+const call = (cmd, data = {}, transfer = []) => new Promise((res) => {
+  const id = ++msgId; pending.set(id, res); worker.postMessage({ id, cmd, ...data }, transfer);
+});
+
+// The status line only shows while the engine loads or when something fails.
+function setStatus(kind, text) {
+  $("status").hidden = kind === "ok";
+  $("statusDot").className = "dot" + (kind === "ok" ? " ok" : kind === "err" ? " err" : "");
+  $("statusText").textContent = text;
+}
+let engineReady = false;
+call("init").then((r) => {
+  if (r.ok) { engineReady = true; setStatus("ok", ""); }
+  else setStatus("err", r.error || "The font engine couldn't start.");
+});
+if (/^((?!chrome|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent)) $("safariNote").hidden = false;
+
+/* ---------------- state ---------------- */
+const S = {
+  fileName: "", fontBytes: null, analysis: null, groups: [], family: "",
+  values: {},          // axis key -> value (original axes by tag, new axes by group key)
+  axes: [],            // axes of the last built font
+  open: null,          // { key, j } swatch being edited
+};
+
+/* ---------------- color helpers ---------------- */
+const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const rgbToHex = (c) => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("").toUpperCase();
+function rotateHue(hex, deg) {
+  let [r, g, b] = hexToRgb(hex).map((v) => v / 255);
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  let h = 0, s = 0;
+  if (d) {
+    s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h /= 6;
+  }
+  if (s < .15) { s = .8; }
+  const L = Math.min(Math.max(l, .35), .6);
+  h = (h + deg / 360) % 1;
+  const q = L < .5 ? L * (1 + s) : L + s - L * s, p = 2 * L - q;
+  const f = (t) => { t = (t + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < .5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+  return rgbToHex([f(h + 1 / 3), f(h), f(h - 1 / 3)].map((v) => v * 255));
+}
+const mix = (a, b) => rgbToHex(hexToRgb(a).map((v, i) => (v + hexToRgb(b)[i]) / 2));
+const validHex = (s) => /^#?[0-9a-f]{6}$/i.test(s.trim());
+const normHex = (s) => "#" + s.trim().replace("#", "").toUpperCase();
+
+/* ---------------- loading a font ---------------- */
+const drop = $("drop");
+drop.addEventListener("click", () => $("file").click());
+drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
+["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) openFont(f); });
+$("sampleBtn").addEventListener("click", async () => {
+  const r = await fetch("examples/HuefaceSample-VF.ttf");
+  if (!r.ok) { showNotes($("loadError"), [{ level: "err", text: "The sample font couldn't be loaded." }]); return; }
+  await openFont(new File([await r.arrayBuffer()], "HuefaceSample-VF.ttf"));
+  if (S.analysis) $("sample").textContent = "HOTEL CIELO";
+});
+$("file").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) openFont(f); e.target.value = ""; });
+
+function showNotes(el, list) {
+  el.innerHTML = "";
+  for (const n of list) {
+    const d = document.createElement("div");
+    d.className = "note " + (n.level || "info");
+    d.textContent = n.text;
+    el.appendChild(d);
+  }
+}
+
+async function openFont(file) {
+  showNotes($("loadError"), []);
+  if (!/\.(ttf|otf)$/i.test(file.name)) {
+    showNotes($("loadError"), [{ level: "err", text: "Choose a .ttf or .otf font file." }]);
+    return;
+  }
+  if (!engineReady) setStatus("", "Waiting for the font engine to finish loading…");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const r = await call("analyze", { bytes: bytes.slice() });
+  if (!r.ok) { showNotes($("loadError"), [{ level: "err", text: r.error }]); return; }
+  S.fileName = file.name; S.fontBytes = bytes; S.analysis = r; S.open = null;
+  S.groups = r.groups.map((g, i) => ({
+    key: g.key, hex: g.hex, glyphs: g.glyphs, name: `Color ${i + 1}`,
+    stops: [g.hex], mode: "solid", axis: "fixed",
+  }));
+  S.values = {};
+  for (const a of r.axes) S.values[a.tag] = a.default;
+  S.family = `${r.family} Color`;
+  $("family").value = S.family;
+  $("fileName").textContent = file.name;
+  $("sample").textContent = r.sample || "Hueface";
+  showNotes($("notes"), r.warnings);
+  showNotes($("exportNotes"), []);
+  $("workspace").hidden = false;
+  drop.querySelector("strong").textContent = "Drop another font to replace this one";
+  setStatus("ok", "");
+  renderRows();
+  rebuild(true);
+}
+
+/* ---------------- colors list ---------------- */
+function variableGroups() { return S.groups.filter((g) => g.axis !== "fixed" && g.stops.length >= 2); }
+function owners() { return S.groups.filter((g) => g.axis === "own" && g.stops.length >= 2); }
+
+function renderRows() {
+  const rows = $("rows");
+  rows.innerHTML = "";
+  for (const g of S.groups) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const isFixed = g.axis === "fixed";
+    const shareOpts = owners().filter((o) => o.key !== g.key)
+      .map((o) => `<option value="${o.key}" ${g.axis === o.key ? "selected" : ""}>Same axis as ${esc(o.name)}</option>`).join("");
+    row.innerHTML = `
+      <div class="row-head">
+        <input type="text" value="${esc(g.name)}" aria-label="Axis name" data-name maxlength="40">
+        <span class="tiny">${g.hex} · ${g.glyphs} glyph${g.glyphs === 1 ? "" : "s"}</span>
+        <span style="flex:1"></span>
+        <select data-axis aria-label="Axis">
+          <option value="fixed" ${isFixed ? "selected" : ""}>Fixed</option>
+          <option value="own" ${g.axis === "own" ? "selected" : ""}>Own axis</option>
+          ${shareOpts}
+        </select>
+        <select data-mode aria-label="How the color changes" ${isFixed ? "hidden" : ""}>
+          <option value="solid" ${g.mode === "solid" ? "selected" : ""}>Solid</option>
+          <option value="gradient" ${g.mode === "gradient" ? "selected" : ""}>Gradient</option>
+        </select>
+      </div>
+      <div class="strip">
+        ${g.stops.map((c, j) => `${j ? '<span class="arrow" aria-hidden="true">→</span>' : ""}<button class="sw" style="background:${c}"
+          data-j="${j}" aria-expanded="${S.open && S.open.key === g.key && S.open.j === j}"
+          aria-label="${stopLabel(g, j)}: ${c}. Click to edit"></button>`).join("")}
+        <button data-add style="margin-left:6px" ${g.stops.length >= MAX_STOPS ? "disabled" : ""}>+ Add color</button>
+      </div>
+      ${editorHtml(g)}
+      ${!isFixed ? `<div class="hint">${g.mode === "solid" ? "Solid: the whole part changes color at once." : "Gradient: the new colors travel across the part."}</div>` : ""}`;
+    rows.appendChild(row);
+    bindRow(row, g);
+  }
+}
+function stopLabel(g, j) {
+  if (j === 0) return "Start color (from your font)";
+  return j === g.stops.length - 1 ? "End color" : "Intermediate color";
+}
+function editorHtml(g) {
+  if (!S.open || S.open.key !== g.key) return "";
+  const j = S.open.j, c = g.stops[j];
+  const removable = j > 0;
+  return `<div class="editor">
+    <span>${stopLabel(g, j)}</span>
+    <input type="color" value="${c.toLowerCase()}" data-picker aria-label="Pick a color">
+    <input type="text" value="${c}" data-hex aria-label="Hex color" maxlength="7">
+    ${removable ? '<button data-remove>Remove</button>' : ""}
+    ${j === 0 && c !== g.hex ? '<button data-restore>Restore original</button>' : ""}
+    <span style="flex:1"></span>
+    <button data-close aria-label="Close editor">Done</button>
+  </div>`;
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function bindRow(row, g) {
+  row.querySelector("[data-name]").addEventListener("input", (e) => {
+    g.name = e.target.value || "Color"; scheduleBuild();
+  });
+  row.querySelector("[data-name]").addEventListener("change", () => renderRows());
+  row.querySelector("[data-axis]").addEventListener("change", (e) => {
+    const was = g.axis;
+    g.axis = e.target.value;
+    if (g.axis !== "fixed" && g.stops.length < 2) g.stops.push(rotateHue(g.stops[0], 150));
+    if (was === "own" && g.axis !== "own") S.groups.forEach((o) => { if (o.axis === g.key) o.axis = "own"; });
+    renderRows(); scheduleBuild();
+  });
+  const mode = row.querySelector("[data-mode]");
+  mode.addEventListener("change", (e) => { g.mode = e.target.value; renderRows(); scheduleBuild(); });
+  row.querySelectorAll(".sw").forEach((b) => b.addEventListener("click", () => {
+    const j = +b.dataset.j;
+    S.open = S.open && S.open.key === g.key && S.open.j === j ? null : { key: g.key, j };
+    renderRows();
+    const p = document.querySelector("[data-picker]"); if (p) p.focus();
+  }));
+  row.querySelector("[data-add]").addEventListener("click", () => {
+    if (g.stops.length >= MAX_STOPS) return;
+    let j;
+    if (g.stops.length === 1) { g.stops.push(rotateHue(g.stops[0], 150)); j = 1; }
+    else { j = g.stops.length - 1; g.stops.splice(j, 0, mix(g.stops[j - 1], g.stops[j])); }
+    if (g.axis === "fixed") g.axis = "own";
+    S.open = { key: g.key, j };
+    renderRows(); scheduleBuild();
+  });
+  const picker = row.querySelector("[data-picker]");
+  if (picker) {
+    const hexIn = row.querySelector("[data-hex]");
+    const swatch = row.querySelector(`.sw[data-j="${S.open.j}"]`);
+    const set = (c) => { g.stops[S.open.j] = c; swatch.style.background = c; scheduleBuild(); };
+    picker.addEventListener("input", (e) => { const c = e.target.value.toUpperCase(); hexIn.value = c; set(c); });
+    hexIn.addEventListener("input", (e) => {
+      if (validHex(e.target.value)) { const c = normHex(e.target.value); picker.value = c.toLowerCase(); set(c); }
+    });
+    const rm = row.querySelector("[data-remove]");
+    if (rm) rm.addEventListener("click", () => {
+      g.stops.splice(S.open.j, 1); S.open = null;
+      if (g.stops.length < 2 && g.axis !== "fixed") {
+        S.groups.forEach((o) => { if (o.axis === g.key) o.axis = "own"; });
+        g.axis = "fixed";
+      }
+      renderRows(); scheduleBuild();
+    });
+    const rs = row.querySelector("[data-restore]");
+    if (rs) rs.addEventListener("click", () => { g.stops[0] = g.hex; renderRows(); scheduleBuild(); });
+    row.querySelector("[data-close]").addEventListener("click", () => { S.open = null; renderRows(); });
+  }
+}
+
+/* ---------------- building and preview ---------------- */
+function config(family, uid) {
+  return {
+    family, uid,
+    groups: S.groups.map((g) => ({ key: g.key, name: g.name, stops: g.stops, mode: g.mode, axis: g.axis })),
+  };
+}
+let buildTimer = null, building = false, again = false, faceN = 0, currentFace = null;
+function scheduleBuild() { clearTimeout(buildTimer); buildTimer = setTimeout(() => rebuild(), 220); }
+
+async function rebuild() {
+  if (!S.fontBytes) return;
+  if (building) { again = true; return; }
+  building = true; $("busy").classList.add("on");
+  const r = await call("build", { config: config("", "preview") });
+  if (r.ok) {
+    try {
+      const face = new FontFace(`hueface-preview-${++faceN}`, r.font.buffer);
+      await face.load();
+      document.fonts.add(face);
+      if (currentFace) document.fonts.delete(currentFace);
+      currentFace = face;
+      $("sample").style.fontFamily = `"${face.family}", system-ui`;
+      S.axes = r.info.axes;
+      renderSliders();
+      showNotes($("exportNotes"), []);
+    } catch (err) {
+      showNotes($("exportNotes"), [{ level: "err", text: "The browser couldn't display the preview font." }]);
+    }
+  } else {
+    showNotes($("exportNotes"), [{ level: "err", text: r.error }]);
+  }
+  building = false; $("busy").classList.remove("on");
+  if (again) { again = false; rebuild(); }
+}
+
+const axisKey = (a) => a.group || a.tag;
+function renderSliders() {
+  const box = $("sliders");
+  box.innerHTML = "";
+  for (const a of S.axes) {
+    const k = axisKey(a);
+    if (!(k in S.values)) S.values[k] = a.default;
+    S.values[k] = Math.min(a.max, Math.max(a.min, S.values[k]));
+    const step = a.max - a.min > 20 ? 1 : 0.1;
+    const div = document.createElement("div");
+    div.className = "slider";
+    div.innerHTML = `<span class="lbl" title="${esc(a.name)} (${a.tag})">${esc(a.name)}${a.group ? '<span class="badge">new</span>' : ""}</span>
+      <input type="range" min="${a.min}" max="${a.max}" step="${step}" value="${S.values[k]}" aria-label="${esc(a.name)}">
+      <output>${fmt(S.values[k])}</output>`;
+    const input = div.querySelector("input"), out = div.querySelector("output");
+    input.addEventListener("input", () => { S.values[k] = +input.value; out.textContent = fmt(+input.value); applyVariations(); });
+    box.appendChild(div);
+  }
+  applyVariations();
+}
+const fmt = (v) => (Math.round(v * 10) / 10).toString();
+function applyVariations() {
+  $("sample").style.fontVariationSettings = S.axes.map((a) => `"${a.tag}" ${S.values[axisKey(a)]}`).join(", ") || "normal";
+  const n = S.axes.filter((a) => a.group).length, orig = S.analysis ? S.analysis.axes : [];
+  $("fileSummary").textContent =
+    `Your font: ${orig.length ? orig.length + " axis" + (orig.length > 1 ? "es" : "") + " (" + orig.map((a) => a.name).join(", ") + ")" : "not variable"}`
+    + ` · ${S.analysis.colorGlyphs} color glyphs · On export: ${n ? "+ " + n + " color axis" + (n > 1 ? "es" : "") : "no new axes yet"}`;
+}
+$("resetAxes").addEventListener("click", () => {
+  for (const a of S.axes) S.values[axisKey(a)] = a.default;
+  renderSliders();
+});
+$("size").addEventListener("input", (e) => { $("sample").style.fontSize = e.target.value + "px"; });
+document.querySelectorAll("[data-bg]").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-bg]").forEach((o) => o.setAttribute("aria-pressed", o === b));
+  $("stage").className = "stage " + b.dataset.bg;
+}));
+$("sample").addEventListener("paste", (e) => {
+  e.preventDefault();
+  document.execCommand("insertText", false, (e.clipboardData || window.clipboardData).getData("text"));
+});
+
+/* ---------------- export ---------------- */
+$("family").addEventListener("input", (e) => { S.family = e.target.value; });
+$("exportBtn").addEventListener("click", async () => {
+  const family = ($("family").value || "").trim();
+  if (!family) { showNotes($("exportNotes"), [{ level: "err", text: "Enter a font name before exporting." }]); $("family").focus(); return; }
+  if (!variableGroups().length) {
+    showNotes($("exportNotes"), [{ level: "warn", text: "No color has an axis yet. Give at least one color an axis to export a color variable font." }]);
+    return;
+  }
+  const btn = $("exportBtn"); btn.disabled = true; btn.textContent = "Exporting…";
+  const uid = Date.now().toString(36);
+  const r = await call("build", { config: config(family, uid) });
+  btn.disabled = false; btn.textContent = "Export font";
+  if (!r.ok) { showNotes($("exportNotes"), [{ level: "err", text: r.error }]); return; }
+  const file = family.replace(/[^A-Za-z0-9]+/g, "") + "-VF.ttf";
+  download(new Blob([r.font], { type: "font/ttf" }), file);
+  showNotes($("exportNotes"), [{ level: "info", text: `Exported ${file}. If an older export with the same name is installed, remove it first so your apps don't mix them up.` }]);
+});
+function download(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ---------------- settings ---------------- */
+$("saveSettings").addEventListener("click", () => {
+  const data = { app: "hueface", version: 1, family: $("family").value,
+    groups: S.groups.map((g) => ({ key: g.key, name: g.name, stops: g.stops, mode: g.mode, axis: g.axis })) };
+  const base = S.fileName.replace(/\.(ttf|otf)$/i, "");
+  download(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), `${base}.hueface.json`);
+});
+$("loadSettings").addEventListener("click", () => $("settingsFile").click());
+$("settingsFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  let data;
+  try { data = JSON.parse(await f.text()); } catch { data = null; }
+  if (!data || data.app !== "hueface" || !Array.isArray(data.groups)) {
+    showNotes($("notes"), [...S.analysis.warnings, { level: "err", text: "That file isn't a Hueface settings file." }]);
+    return;
+  }
+  const byKey = new Map(data.groups.map((g) => [g.key, g]));
+  let matched = 0;
+  for (const g of S.groups) {
+    const s = byKey.get(g.key);
+    if (!s) continue;
+    matched++;
+    g.name = String(s.name || g.name).slice(0, 40);
+    g.stops = (Array.isArray(s.stops) ? s.stops : []).filter(validHex).map(normHex).slice(0, MAX_STOPS);
+    if (!g.stops.length) g.stops = [g.hex];
+    g.mode = s.mode === "gradient" ? "gradient" : "solid";
+    g.axis = typeof s.axis === "string" ? s.axis : "fixed";
+  }
+  const keys = new Set(S.groups.map((g) => g.key));
+  for (const g of S.groups) if (!["fixed", "own"].includes(g.axis) && !keys.has(g.axis)) g.axis = "own";
+  if (data.family) $("family").value = S.family = data.family;
+  S.open = null;
+  const missing = data.groups.length - matched;
+  showNotes($("notes"), [...S.analysis.warnings, { level: missing ? "warn" : "info",
+    text: `Settings applied to ${matched} color${matched === 1 ? "" : "s"}.` + (missing ? ` ${missing} saved color${missing === 1 ? " isn't" : "s aren't"} in this font.` : "") }]);
+  renderRows(); scheduleBuild();
+});
+</script>
+</body>
+</html>
