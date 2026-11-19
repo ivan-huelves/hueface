@@ -13,10 +13,13 @@ Every distinct solid color used by the font's COLR layers is a *group*. A group
 can stay fixed or get a color axis (0–100). Two modes:
 
   solid     The whole part changes color uniformly. Built as stacked copies of the
-            layer, one per extra color, painted with a two-stop gradient of a single
-            color whose opacity varies along the axis. (Illustrator ignores varying
+            layer, one per color, painted with a two-stop gradient of a single color
+            whose opacity varies along the axis. (Illustrator ignores varying
             PaintVarSolid, but applies varying gradient stops.)
   gradient  A multi-color gradient travels across the part as the axis moves.
+
+Every color (stop) has its own opacity, written '#RRGGBBAA', so an axis can also fade a
+part in or out: '#E6007E00' -> '#E6007E'.
 
 All new variation data lives in one 16-bit ItemVariationStore. Variable transforms
 exported by font editors (32-bit translations) are rewritten as 16-bit translations.
@@ -35,7 +38,7 @@ from fontTools.colorLib.builder import buildCOLR
 from fontTools.colorLib.unbuilder import unbuildColrV1
 from fontTools.varLib.builder import buildVarRegionList, buildVarData, buildVarStore
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 NO_VAR = 0xFFFFFFFF
 FOREGROUND = 0xFFFF
 F2DOT14_ONE = 16384
@@ -425,6 +428,14 @@ def _palette_index(cpal, hexcolor, alpha, cache):
     return cache[k]
 
 
+def _parse_stop(text):
+    """'#RRGGBB' (opaque) or '#RRGGBBAA' -> ('#RRGGBB', opacity 0–1)."""
+    h = str(text).strip().lstrip("#").upper()
+    if not re.fullmatch(r"[0-9A-F]{6}([0-9A-F]{2})?", h):
+        raise HuefaceError(f"'{text}' isn't a valid color. Use #RRGGBB or #RRGGBBAA.")
+    return "#" + h[:6], (int(h[6:], 16) / 255 if len(h) == 8 else 1.0)
+
+
 def build(data, config_json):
     """Returns the bytes of the new font."""
     return _build(data, config_json)[0]
@@ -509,32 +520,59 @@ def _build(data, config_json):
     asc = (os2.sTypoAscender if os2 else 0) or font["hhea"].ascent
     band = max(asc - desc, upm // 2)
 
-    def alpha_rows(tag, k, n):
-        """opacity of overlay k (1..n-1): 0 before segment k, ramps 0→1 inside it, 1 after."""
-        # tent (a,b,1) rises on [a,b] and falls on [b,1]; ramp (b,1,1) rises on [b,1]:
-        # their sum is exactly 1 on [b,1].
-        a, b = (k - 1) / (n - 1), k / (n - 1)
-        if b >= 1:
-            return {store.region({tag: (a, 1.0, 1.0)}): F2DOT14_ONE}
-        return {store.region({tag: (a, b, 1.0)}): F2DOT14_ONE,
-                store.region({tag: (b, 1.0, 1.0)}): F2DOT14_ONE}
+    def curve(tag, f, knots):
+        """Deltas that make a value follow f(t) along the axis: exact at every knot, linear between.
 
-    def hide_after(tag, b, n):
-        """opacity delta -1 from axis position b on (falls over a short step just before b)."""
-        eps = min(0.02, 0.25 / (n - 1))
-        if b >= 1:
-            return {store.region({tag: (1.0 - eps, 1.0, 1.0)}): -F2DOT14_ONE}
-        return {store.region({tag: (b - eps, b, 1.0)}): -F2DOT14_ONE,
-                store.region({tag: (b, 1.0, 1.0)}): -F2DOT14_ONE}
-
-    def merged(*dicts, scale=1.0):
+        Each knot after the first gets a tent region peaking on it and reaching zero on its
+        neighbours (the last one is a ramp up to 1). The tents add up to 1 everywhere, so
+        f(0) + sum((f(k_i) - f(0)) * tent_i(t)) is the piecewise-linear interpolation of f.
+        """
         out = {}
-        for d in dicts:
-            for r, v in d.items():
-                out[r] = out.get(r, 0) + v * scale
-        return out
+        f0 = f(knots[0])
+        for i in range(1, len(knots)):
+            d = f(knots[i]) - f0
+            if abs(d) < 1e-6:
+                continue
+            nxt = knots[i + 1] if i + 1 < len(knots) else 1.0
+            out[store.region({tag: (knots[i - 1], knots[i], nxt)})] = d * F2DOT14_ONE
+        return f0, out
 
-    def flat_gradient(index, alpha_var, alpha=0.0):
+    def solid_knots(n):
+        """Sample points along the axis: each stretch in quarters, plus a point just before its end."""
+        eps = min(0.02, 0.25 / (n - 1))
+        pts = {0.0, 1.0}
+        for j in range(1, n):
+            a, b = (j - 1) / (n - 1), j / (n - 1)
+            pts.update(a + (b - a) * q for q in (0.25, 0.5, 0.75))
+            pts.update((b - eps, b))
+        return sorted({round(p, 4) for p in pts})
+
+    def layer_alpha(k, al):
+        """Opacity of the copy painted with color k, as a function of the axis position t (0–1).
+
+        Color k fades in over stretch k (on top of color k-1) and fades out over stretch k+1
+        (under color k+1). While the copy above has opacity y, the copy below gets
+        (A - y) / (1 - y), where A is the opacity the pair should show: the two colors' own
+        opacities interpolated. When the upper color is opaque this keeps the lower copy
+        constant until the upper one covers it, so no edge of the older color shows through.
+        """
+        n = len(al)
+
+        def f(t):
+            pos = t * (n - 1)
+            j = min(int(pos) + 1, n - 1)        # stretch j runs from color j-1 to color j
+            u = pos - (j - 1)
+            if k == j:                          # fading in on top
+                return u * al[k]
+            if k == j - 1:                      # underneath the color fading in
+                y = u * al[j]
+                if 1 - y < 1e-9:
+                    return 0.0
+                return max(0.0, ((1 - u) * al[k] + u * al[j] - y) / (1 - y))
+            return 0.0
+        return f
+
+    def flat_gradient(index, alpha_var, alpha):
         """A gradient that paints one color, with variable opacity (Illustrator-friendly solid)."""
         stops = [{"StopOffset": o, "PaletteIndex": index, "Alpha": alpha,
                   "VarIndexBase": store.add([{}, alpha_var])} for o in (0.0, 1.0)]
@@ -542,7 +580,7 @@ def _build(data, config_json):
                 "ColorLine": {"Extend": "pad", "ColorStop": stops},
                 "x0": 0, "y0": 0, "x1": 0, "y1": upm, "x2": upm, "y2": 0, "VarIndexBase": NO_VAR}
 
-    def travelling_gradient(stops_idx, alpha, tag):
+    def travelling_gradient(stops_idx, alphas, tag):
         n = len(stops_idx)
         T = band // 2
         L = n * band + (n - 1) * T
@@ -551,7 +589,7 @@ def _build(data, config_json):
         for i, idx in enumerate(stops_idx):
             s = i * (band + T)
             for off in (s, s + band):
-                cl.append({"StopOffset": off / L, "PaletteIndex": idx, "Alpha": alpha,
+                cl.append({"StopOffset": off / L, "PaletteIndex": idx, "Alpha": alphas[i],
                            "VarIndexBase": NO_VAR})
         reg = store.region({tag: (0.0, 1.0, 1.0)})
         base = store.add([{}, {reg: D}, {}, {reg: D}, {}, {reg: D}])
@@ -592,34 +630,28 @@ def _build(data, config_json):
             if not g:
                 out.append(layer)
                 continue
-            stops = [s.upper() for s in g.get("stops", [])] or [_hex(c)]
-            alpha = solid.get("Alpha", 1.0)
-            start_idx = (solid["PaletteIndex"] if stops[0] == _hex(c)
-                         else _palette_index(cpal, stops[0], c.alpha, cache))
-
-            def base(s, idx=start_idx):
-                s = dict(s)
-                s["PaletteIndex"] = idx
-                return s
+            # each stop: a palette entry for its RGB, and its opacity times the layer's own
+            stops = [_parse_stop(h) for h in g.get("stops", [])] or [(_hex(c), c.alpha / 255)]
+            s_alpha = solid.get("Alpha", 1.0)
+            idxs = [_palette_index(cpal, h, 255, cache) for h, _ in stops]
+            alphas = [round(s_alpha * a, 4) for _, a in stops]
 
             if g["key"] not in owner:                       # fixed (maybe recolored)
+                def base(s, idx=idxs[0], a=alphas[0]):
+                    s = dict(s)
+                    s["PaletteIndex"], s["Alpha"] = idx, a
+                    return s
                 out.append(replace_solid(layer, base))
                 continue
             tag = axis_of[owner[g["key"]]]
-            idxs = [start_idx] + [_palette_index(cpal, h, c.alpha, cache) for h in stops[1:]]
             if g.get("mode") == "gradient":
-                out.append(replace_solid(layer, lambda s: travelling_gradient(idxs, alpha, tag)))
+                out.append(replace_solid(layer, lambda s: travelling_gradient(idxs, alphas, tag)))
                 continue
-            # Each color is a copy of the layer stacked on top of the previous one. A copy
-            # fades in across its stretch of the axis; the copy below it is hidden once the
-            # one above is fully opaque, so no edge of an older color shows through.
-            n = len(idxs)
-            stops_at = [k / (n - 1) for k in range(n)]
-            for k in range(n):
-                fade_in = alpha_rows(tag, k, n) if k else {}
-                hide = hide_after(tag, stops_at[k + 1], n) if k < n - 1 else {}
-                av = merged(fade_in, hide, scale=alpha)
-                start = alpha if k == 0 else 0.0
+            # Each color is a copy of the layer stacked on top of the previous one, with an
+            # opacity that follows layer_alpha along the axis.
+            knots = solid_knots(len(idxs))
+            for k in range(len(idxs)):
+                start, av = curve(tag, layer_alpha(k, alphas), knots)
                 out.append(replace_solid(layer, lambda s, k=k, av=av, start=start:
                                          flat_gradient(idxs[k], av, start)))
         paints[gname] = {"Format": PF.PaintColrLayers, "Layers": out}

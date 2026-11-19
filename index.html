@@ -103,13 +103,18 @@ h2 { font-size: 15px; font-weight: 600; margin: 30px 0 4px; }
 .row-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .row-head input[type=text] { width: 150px; }
 .strip { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
-.sw { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--border-2); padding: 0; cursor: pointer; flex: none; }
+.sw { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--border-2); padding: 0; cursor: pointer; flex: none;
+  /* the color over a checkerboard, so transparency shows */
+  background: linear-gradient(var(--c), var(--c)), repeating-conic-gradient(#cfcbc3 0 25%, #ffffff 0 50%) 0 0 / 10px 10px; }
 .sw[aria-expanded=true] { outline: 2px solid var(--focus); outline-offset: 2px; }
 .arrow { color: var(--text-3); font-size: 14px; }
 .editor { margin-top: 10px; padding: 10px 12px; background: var(--surface-2); border-radius: var(--radius);
   display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
 .editor input[type=color] { width: 44px; height: 32px; border: 0; padding: 0; background: none; cursor: pointer; }
-.editor input[type=text] { width: 96px; font-family: ui-monospace, Menlo, monospace; }
+.editor input[type=text] { width: 112px; font-family: ui-monospace, Menlo, monospace; }
+.editor .opacity { display: inline-flex; align-items: center; gap: 8px; }
+.editor .opacity input { width: 120px; }
+.editor .opacity output { width: 38px; font-variant-numeric: tabular-nums; color: var(--text-2); }
 .hint { font-size: 12px; color: var(--text-3); margin-top: 6px; }
 .export { margin-top: 30px; padding: 16px; background: var(--surface); border: 1px solid var(--border);
   border-radius: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -135,6 +140,7 @@ footer { margin-top: 48px; font-size: 12px; color: var(--text-3); }
       <li>Use one exact color per role. Hueface groups parts by color, so if two parts must change independently, give them slightly different colors (for example #E6007E and #E6007F).</li>
       <li>Avoid components that are rotated or scaled differently in each master. Decompose them before exporting.</li>
       <li>Export a variable TrueType font with COLR color (not SVG). Static color fonts also work.</li>
+      <li>Opacity changes are made here, not in your editor: give a color 0% opacity to make a part fade in or out along an axis.</li>
     </ul>
     <h3>FontLab</h3>
     <ol>
@@ -193,7 +199,7 @@ footer { margin-top: 48px; font-size: 12px; color: var(--text-3); }
   </section>
 
   <h2>Colors in your font</h2>
-  <div class="tiny">Each color can stay fixed or get its own axis. The row name becomes the axis name in your design app.</div>
+  <div class="tiny">Each color can stay fixed or get its own axis. The row name becomes the axis name in your design app. Each color also has an opacity: from 0% to 100% makes a part fade in.</div>
   <div class="rows" id="rows" style="margin-top:10px"></div>
 
   <div class="export">
@@ -262,9 +268,15 @@ function rotateHue(hex, deg) {
   const f = (t) => { t = (t + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < .5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
   return rgbToHex([f(h + 1 / 3), f(h), f(h - 1 / 3)].map((v) => v * 255));
 }
-const mix = (a, b) => rgbToHex(hexToRgb(a).map((v, i) => (v + hexToRgb(b)[i]) / 2));
-const validHex = (s) => /^#?[0-9a-f]{6}$/i.test(s.trim());
-const normHex = (s) => "#" + s.trim().replace("#", "").toUpperCase();
+// A color is "#RRGGBB" (opaque) or "#RRGGBBAA" (with opacity).
+const rgbOf = (c) => c.slice(0, 7);
+const alphaOf = (c) => (c.length === 9 ? parseInt(c.slice(7), 16) / 255 : 1);
+const withAlpha = (rgb, a) => (a >= 1 ? rgb : rgb + Math.round(Math.max(0, a) * 255).toString(16).padStart(2, "0").toUpperCase());
+const mix = (a, b) => withAlpha(rgbToHex(hexToRgb(a).map((v, i) => (v + hexToRgb(b)[i]) / 2)), (alphaOf(a) + alphaOf(b)) / 2);
+const nextColor = (c) => withAlpha(rotateHue(rgbOf(c), 150), alphaOf(c));
+const validHex = (s) => /^#?([0-9a-f]{6}|[0-9a-f]{8})$/i.test(String(s).trim());
+const normHex = (s) => { const c = "#" + String(s).trim().replace("#", "").toUpperCase(); return withAlpha(rgbOf(c), alphaOf(c)); };
+const pct = (a) => Math.round(a * 100) + "%";
 
 /* ---------------- loading a font ---------------- */
 const drop = $("drop");
@@ -303,8 +315,8 @@ async function openFont(file) {
   if (!r.ok) { showNotes($("loadError"), [{ level: "err", text: r.error }]); return; }
   S.fileName = file.name; S.fontBytes = bytes; S.analysis = r; S.open = null;
   S.groups = r.groups.map((g, i) => ({
-    key: g.key, hex: g.hex, glyphs: g.glyphs, name: `Color ${i + 1}`,
-    stops: [g.hex], mode: "solid", axis: "fixed",
+    key: g.key, hex: withAlpha(g.hex, g.alpha), glyphs: g.glyphs, name: `Color ${i + 1}`,
+    stops: [withAlpha(g.hex, g.alpha)], mode: "solid", axis: "fixed",
   }));
   S.values = {};
   for (const a of r.axes) S.values[a.tag] = a.default;
@@ -350,9 +362,9 @@ function renderRows() {
         </select>
       </div>
       <div class="strip">
-        ${g.stops.map((c, j) => `${j ? '<span class="arrow" aria-hidden="true">→</span>' : ""}<button class="sw" style="background:${c}"
+        ${g.stops.map((c, j) => `${j ? '<span class="arrow" aria-hidden="true">→</span>' : ""}<button class="sw" style="--c:${c}"
           data-j="${j}" aria-expanded="${S.open && S.open.key === g.key && S.open.j === j}"
-          aria-label="${stopLabel(g, j)}: ${c}. Click to edit"></button>`).join("")}
+          aria-label="${stopLabel(g, j)}: ${c}${alphaOf(c) < 1 ? ", " + pct(alphaOf(c)) + " opacity" : ""}. Click to edit"></button>`).join("")}
         <button data-add style="margin-left:6px" ${g.stops.length >= MAX_STOPS ? "disabled" : ""}>+ Add color</button>
       </div>
       ${editorHtml(g)}
@@ -371,8 +383,9 @@ function editorHtml(g) {
   const removable = j > 0;
   return `<div class="editor">
     <span>${stopLabel(g, j)}</span>
-    <input type="color" value="${c.toLowerCase()}" data-picker aria-label="Pick a color">
-    <input type="text" value="${c}" data-hex aria-label="Hex color" maxlength="7">
+    <input type="color" value="${rgbOf(c).toLowerCase()}" data-picker aria-label="Pick a color">
+    <input type="text" value="${c}" data-hex aria-label="Hex color, with optional opacity (#RRGGBBAA)" maxlength="9">
+    <label class="opacity">Opacity <input type="range" min="0" max="100" step="1" value="${Math.round(alphaOf(c) * 100)}" data-alpha aria-label="Opacity"><output data-alpha-out>${pct(alphaOf(c))}</output></label>
     ${removable ? '<button data-remove>Remove</button>' : ""}
     ${j === 0 && c !== g.hex ? '<button data-restore>Restore original</button>' : ""}
     <span style="flex:1"></span>
@@ -389,7 +402,7 @@ function bindRow(row, g) {
   row.querySelector("[data-axis]").addEventListener("change", (e) => {
     const was = g.axis;
     g.axis = e.target.value;
-    if (g.axis !== "fixed" && g.stops.length < 2) g.stops.push(rotateHue(g.stops[0], 150));
+    if (g.axis !== "fixed" && g.stops.length < 2) g.stops.push(nextColor(g.stops[0]));
     if (was === "own" && g.axis !== "own") S.groups.forEach((o) => { if (o.axis === g.key) o.axis = "own"; });
     renderRows(); scheduleBuild();
   });
@@ -404,7 +417,7 @@ function bindRow(row, g) {
   row.querySelector("[data-add]").addEventListener("click", () => {
     if (g.stops.length >= MAX_STOPS) return;
     let j;
-    if (g.stops.length === 1) { g.stops.push(rotateHue(g.stops[0], 150)); j = 1; }
+    if (g.stops.length === 1) { g.stops.push(nextColor(g.stops[0])); j = 1; }
     else { j = g.stops.length - 1; g.stops.splice(j, 0, mix(g.stops[j - 1], g.stops[j])); }
     if (g.axis === "fixed") g.axis = "own";
     S.open = { key: g.key, j };
@@ -414,10 +427,25 @@ function bindRow(row, g) {
   if (picker) {
     const hexIn = row.querySelector("[data-hex]");
     const swatch = row.querySelector(`.sw[data-j="${S.open.j}"]`);
-    const set = (c) => { g.stops[S.open.j] = c; swatch.style.background = c; scheduleBuild(); };
-    picker.addEventListener("input", (e) => { const c = e.target.value.toUpperCase(); hexIn.value = c; set(c); });
+    const alphaIn = row.querySelector("[data-alpha]"), alphaOut = row.querySelector("[data-alpha-out]");
+    const set = (c) => {
+      g.stops[S.open.j] = c;
+      swatch.style.setProperty("--c", c);
+      swatch.setAttribute("aria-label", `${stopLabel(g, S.open.j)}: ${c}${alphaOf(c) < 1 ? ", " + pct(alphaOf(c)) + " opacity" : ""}. Click to edit`);
+      scheduleBuild();
+    };
+    picker.addEventListener("input", (e) => {
+      const c = withAlpha(e.target.value.toUpperCase(), alphaOf(g.stops[S.open.j])); hexIn.value = c; set(c);
+    });
     hexIn.addEventListener("input", (e) => {
-      if (validHex(e.target.value)) { const c = normHex(e.target.value); picker.value = c.toLowerCase(); set(c); }
+      if (!validHex(e.target.value)) return;
+      const c = normHex(e.target.value);
+      picker.value = rgbOf(c).toLowerCase(); alphaIn.value = Math.round(alphaOf(c) * 100); alphaOut.textContent = pct(alphaOf(c));
+      set(c);
+    });
+    alphaIn.addEventListener("input", () => {
+      const a = +alphaIn.value / 100, c = withAlpha(rgbOf(g.stops[S.open.j]), a);
+      hexIn.value = c; alphaOut.textContent = pct(a); set(c);
     });
     const rm = row.querySelector("[data-remove]");
     if (rm) rm.addEventListener("click", () => {
